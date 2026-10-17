@@ -151,7 +151,7 @@ jobs:
     needs: [quality]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - run: docker build --target web -t coursemates/web:ci .
       - run: docker build --target worker -t coursemates/worker:ci .
       - run: docker image ls coursemates/web:ci coursemates/worker:ci --format '{{.Repository}} {{.Size}}'

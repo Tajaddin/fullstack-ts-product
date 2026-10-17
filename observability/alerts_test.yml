@@ -1,0 +1,127 @@
+rule_files:
+  - alert_rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="web",instance="host"}'
+        values: "0 0 0 0 0"
+      - series: 'up{job="web",instance="compose"}'
+        values: "0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: WebDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: web }
+            exp_annotations:
+              summary: "No web instance is being scraped"
+              description: "Every web target has been down for 2 minutes."
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="web",instance="host"}'
+        values: "0 0 0 0 0"
+      - series: 'up{job="web",instance="compose"}'
+        values: "1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WebDown
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="worker",instance="host"}'
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WorkerDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WorkerDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: worker }
+            exp_annotations:
+              summary: "The background worker is down"
+              description: "Reminders and digests are not being sent."
+
+  - interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_count{route="/api/v1/groups",method="GET",status="200"}'
+        values: "0+60x12"
+      - series: 'http_request_duration_seconds_count{route="/api/v1/groups",method="POST",status="500"}'
+        values: "0+6x12"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "More than 5% of API requests fail"
+              description: "5xx share over the last 5 minutes is 9.091%."
+
+  - interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_count{route="/api/v1/groups",method="GET",status="200"}'
+        values: "0+60x12"
+      - series: 'http_request_duration_seconds_count{route="/api/v1/groups",method="POST",status="500"}'
+        values: "0+1x12"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{le="0.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{le="1"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{le="2.5"}'
+        values: "0+100x20"
+      - series: 'http_request_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x20"
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: SlowRequests
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "API p95 above 1 s"
+              description: "p95 over 5 minutes is 2.417s."
+
+  - interval: 1m
+    input_series:
+      - series: 'jobs_processed_total{queue="reminders",status="failed"}'
+        values: "0 0 0 2 2 2"
+      - series: 'emails_sent_total{kind="reminder",status="failed"}'
+        values: "0 0 0 0 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: JobFailures
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Background jobs failed"
+              description: "2 job failures in 15 minutes; see the worker logs."
+      - eval_time: 5m
+        alertname: EmailFailures
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "E-mail delivery to SMTP failed"
+              description: "1 messages were not accepted by the SMTP server in 15 minutes."
+
+  - interval: 1m
+    input_series:
+      - series: 'rate_limit_rejections_total{scope="api"}'
+        values: "0+120x15"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: RateLimitSpike
+        exp_alerts:
+          - exp_labels: { severity: info }
+            exp_annotations:
+              summary: "Sustained rate limiting"
+              description: "More than one request per second is being rejected; a client is misbehaving or the limits are too low."

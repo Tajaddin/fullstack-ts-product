@@ -1,0 +1,58 @@
+groups:
+  - name: coursemates
+    rules:
+      - alert: WebDown
+        expr: max by (job) (up{job="web"}) == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "No web instance is being scraped"
+          description: "Every web target has been down for 2 minutes."
+
+      - alert: WorkerDown
+        expr: max by (job) (up{job="worker"}) == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The background worker is down"
+          description: "Reminders and digests are not being sent."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m]))
+            / sum(rate(http_request_duration_seconds_count[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 5% of API requests fail"
+          description: "5xx share over the last 5 minutes is {{ $value | humanizePercentage }}."
+
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "API p95 above 1 s"
+          description: "p95 over 5 minutes is {{ $value | humanizeDuration }}."
+
+      - alert: JobFailures
+        expr: sum(increase(jobs_processed_total{status="failed"}[15m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Background jobs failed"
+          description: "{{ $value }} job failures in 15 minutes; see the worker logs."
+
+      - alert: EmailFailures
+        expr: sum(increase(emails_sent_total{status="failed"}[15m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "E-mail delivery to SMTP failed"
+          description: "{{ $value }} messages were not accepted by the SMTP server in 15 minutes."
+
+      - alert: RateLimitSpike
+        expr: sum(rate(rate_limit_rejections_total[5m])) > 1
+        for: 10m
+        labels: { severity: info }
+        annotations:
+          summary: "Sustained rate limiting"
+          description: "More than one request per second is being rejected; a client is misbehaving or the limits are too low."

@@ -1,0 +1,50 @@
+{
+  "run_utc": "2026-10-17 12:46",
+  "vus": 10,
+  "duration": "60s",
+  "method": "k6 in a container (grafana/k6) against `npm run start` on the same machine, constant VUs, each iteration fetches every page once; durations are full HTTP response times in milliseconds",
+  "requests": 12465,
+  "failed_rate": 0,
+  "overall_ms": {
+    "p50": 51.611989,
+    "p95": 74.4811142,
+    "p99": 87.91054660000006
+  },
+  "pages": [
+    {
+      "page": "/",
+      "p50_ms": 49.704115,
+      "p95_ms": 65.49191920000001,
+      "p99_ms": 77.72390292,
+      "max_ms": 116.307952
+    },
+    {
+      "page": "/courses",
+      "p50_ms": 63.642974,
+      "p95_ms": 82.9323224,
+      "p99_ms": 97.79727259999994,
+      "max_ms": 128.48278
+    },
+    {
+      "page": "/courses/COP4530",
+      "p50_ms": 60.416641,
+      "p95_ms": 79.398667,
+      "p99_ms": 91.22934051999998,
+      "max_ms": 122.963995
+    },
+    {
+      "page": "/privacy",
+      "p50_ms": 46.950327,
+      "p95_ms": 61.902375400000004,
+      "p99_ms": 74.42715703999997,
+      "max_ms": 98.905583
+    },
+    {
+      "page": "/api/health",
+      "p50_ms": 13.377629,
+      "p95_ms": 19.3972656,
+      "p99_ms": 24.41162296,
+      "max_ms": 35.887182
+    }
+  ]
+}

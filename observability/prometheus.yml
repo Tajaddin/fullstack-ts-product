@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # The app runs on the host during development (npm run dev / npm run start) and in the `app` profile
+  # as containers; both targets are listed and the one that is down simply shows up as down.
+  - job_name: web
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["host.docker.internal:3100"]
+        labels: { instance: host }
+      - targets: ["web:3000"]
+        labels: { instance: compose }
+  - job_name: worker
+    static_configs:
+      - targets: ["host.docker.internal:9465"]
+        labels: { instance: host }
+      - targets: ["worker:9465"]
+        labels: { instance: compose }
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

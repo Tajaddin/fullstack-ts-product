@@ -1,0 +1,38 @@
+# Web app on Fly.io. Deploy with scripts/deploy.sh (worker first: it runs the migrations).
+app = "coursemates"
+primary_region = "mia"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "web"
+  [build.args]
+    APP_URL = "https://coursemates.fly.dev"
+    NEXT_PUBLIC_POSTHOG_HOST = "https://us.i.posthog.com"
+
+[env]
+  APP_URL = "https://coursemates.fly.dev"
+  AUTH_URL = "https://coursemates.fly.dev"
+  AUTH_DEV_LOGIN = "false"
+  LOG_LEVEL = "info"
+  EMAIL_FROM = "Coursemates <no-reply@coursemates.fly.dev>"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

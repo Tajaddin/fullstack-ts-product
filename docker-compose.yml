@@ -1,0 +1,129 @@
+name: coursemates
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://coursemates:${POSTGRES_PASSWORD:-coursemates}@postgres:5432/coursemates
+  REDIS_URL: redis://redis:6379
+  SMTP_URL: smtp://mailpit:1025
+  EMAIL_FROM: ${EMAIL_FROM:-Coursemates <no-reply@coursemates.local>}
+  APP_URL: ${APP_URL:-http://localhost:${WEB_PORT:-3100}}
+  AUTH_URL: ${APP_URL:-http://localhost:${WEB_PORT:-3100}}
+  AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+  AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-true}
+  AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+  AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coursemates
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-coursemates}
+      POSTGRES_DB: coursemates
+    ports: ["${POSTGRES_PORT:-5436}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coursemates -d coursemates"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
+    ports: ["${REDIS_PORT:-6380}:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${MAILPIT_UI_PORT:-8026}:8025"
+      - "${MAILPIT_SMTP_PORT:-1026}:1025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  # The application itself, for running the whole thing in containers (profile app).
+  # For development run `npm run dev` on the host against the services above.
+  web:
+    profiles: [app]
+    build:
+      context: .
+      target: web
+    image: coursemates/web:local
+    environment:
+      <<: *app-env
+      PORT: "3000"
+    ports: ["${WEB_PORT:-3100}:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 5
+
+  worker:
+    profiles: [app]
+    build:
+      context: .
+      target: worker
+    image: coursemates/worker:local
+    environment:
+      <<: *app-env
+      WORKER_METRICS_PORT: "9465"
+    ports: ["${WORKER_METRICS_PORT:-9465}:9465"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--web.enable-lifecycle"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    ports: ["${PROMETHEUS_PORT:-9099}:9090"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  alertmanager:
+    profiles: [observability]
+    image: prom/alertmanager:v0.28.1
+    volumes: ["./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    ports: ["${ALERTMANAGER_PORT:-9101}:9093"]
+
+  tempo:
+    profiles: [observability]
+    image: grafana/tempo:2.8.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes: ["./observability/tempo.yaml:/etc/tempo.yaml:ro"]
+    ports:
+      - "${TEMPO_PORT:-3203}:3200"
+      - "${OTLP_HTTP_PORT:-4319}:4318"
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["${GRAFANA_PORT:-3005}:3000"]
+    depends_on: [prometheus, tempo]
+
+volumes:
+  pgdata:
+  redisdata:

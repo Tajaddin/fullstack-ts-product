@@ -1,0 +1,25 @@
+# Background worker on Fly.io: a second app from the same Dockerfile. Its release command applies the
+# database migrations, so deploy it before the web app.
+app = "coursemates-worker"
+primary_region = "mia"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "worker"
+
+[deploy]
+  release_command = "node_modules/.bin/tsx scripts/migrate.ts"
+
+[env]
+  APP_URL = "https://coursemates.fly.dev"
+  LOG_LEVEL = "info"
+  EMAIL_FROM = "Coursemates <no-reply@coursemates.fly.dev>"
+  WORKER_METRICS_PORT = "9465"
+
+[processes]
+  worker = "node_modules/.bin/tsx src/worker/index.ts"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  processes = ["worker"]

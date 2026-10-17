@@ -1,0 +1,4 @@
+name            = "coursemates"
+neon_api_key    = "neon_api_key_here"
+upstash_email   = "you@example.com"
+upstash_api_key = "upstash_management_api_key_here"

@@ -1,0 +1,73 @@
+{
+  "title": "Coursemates",
+  "uid": "coursemates",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API requests per second by route",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (route) (rate(http_request_duration_seconds_count[1m]))", "legendFormat": "{{route}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "API latency p50 / p95 / p99",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Responses by status",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (status) (rate(http_request_duration_seconds_count[1m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate limit rejections",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (scope) (rate(rate_limit_rejections_total[1m]))", "legendFormat": "{{scope}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Background jobs",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (queue, status) (increase(jobs_processed_total[5m]))", "legendFormat": "{{queue}} {{status}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "E-mails handed to SMTP",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (kind, status) (increase(emails_sent_total[5m]))", "legendFormat": "{{kind}} {{status}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Node.js heap used",
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [{ "expr": "nodejs_heap_size_used_bytes", "legendFormat": "{{service}} {{instance}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event loop lag p99",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{ "expr": "nodejs_eventloop_lag_p99_seconds", "legendFormat": "{{service}} {{instance}}" }]
+    }
+  ]
+}

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Deploys to Fly.io: the worker app first (its release command runs the migrations), then the web app.
-# Needs flyctl logged in, and the secrets exported in the shell (or already set with `fly secrets set`):
+# Needs flyctl logged in, and the secrets in .env.deploy, exported in the shell, or already set with `fly secrets set`:
 #   DATABASE_URL REDIS_URL AUTH_SECRET SMTP_URL [AUTH_GOOGLE_ID AUTH_GOOGLE_SECRET SENTRY_DSN]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# the secrets can also live in .env.deploy (gitignored), one KEY=value per line
+if [ -f .env.deploy ]; then set -a; . ./.env.deploy; set +a; fi
 
 WEB_APP="${WEB_APP:-coursemates}"
 WORKER_APP="${WORKER_APP:-coursemates-worker}"

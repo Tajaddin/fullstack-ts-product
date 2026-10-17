@@ -55,3 +55,7 @@ next.config.compiled.js
 
 # terraform provider cache (keep .terraform.lock.hcl)
 infra/terraform/.terraform/
+
+# terraform inputs and state hold account keys and resource ids
+infra/terraform/terraform.tfvars
+infra/terraform/*.tfstate*

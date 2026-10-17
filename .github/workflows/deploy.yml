@@ -1,0 +1,29 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy
+
+jobs:
+  fly:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: worker (runs migrations as its release command)
+        run: flyctl deploy -c fly.worker.toml --remote-only
+      - name: web
+        run: |
+          flyctl deploy -c fly.toml --remote-only \
+            --build-arg "NEXT_PUBLIC_POSTHOG_KEY=${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}" \
+            --build-arg "NEXT_PUBLIC_SENTRY_DSN=${{ vars.NEXT_PUBLIC_SENTRY_DSN }}" \
+            --build-arg "NEXT_PUBLIC_CONTACT=${{ vars.NEXT_PUBLIC_CONTACT }}" \
+            --build-arg "APP_URL=${{ vars.APP_URL }}"
+      - run: curl -fsS "${{ vars.APP_URL }}/api/health"

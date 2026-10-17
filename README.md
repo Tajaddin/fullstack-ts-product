@@ -66,8 +66,10 @@ deployed or announced; `npm run wau` counts distinct users in `daily_active` ove
 
 ### Lighthouse (mobile)
 
-`npm run lhci` runs Lighthouse CI three times per page against the production server and fails below 90 in
-any category.
+`npm run lhci` runs Lighthouse CI three times per page against the production server. The table below was
+measured on this workstation. In CI the gate is 90 for accessibility, best practices and SEO and 70 for
+performance: GitHub's shared runners score performance lower (0.75 to 0.87 on 2026-10-17), so the CI gate
+catches regressions rather than restating the local number.
 
 <!-- LIGHTHOUSE -->
 

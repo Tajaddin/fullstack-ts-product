@@ -10,7 +10,7 @@ terraform {
     }
     upstash = {
       source  = "upstash/upstash"
-      version = "~> 1.5"
+      version = "~> 2.1"
     }
   }
 }

@@ -2,7 +2,7 @@
 # Two runtime targets from one build:
 #   docker build --target web    -t coursemates/web .
 #   docker build --target worker -t coursemates/worker .
-FROM node:24-alpine AS base
+FROM node:26-alpine AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 

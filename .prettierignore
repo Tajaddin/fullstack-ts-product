@@ -1,0 +1,9 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+.lighthouseci
+drizzle/meta
+package-lock.json
+AGENTS.md

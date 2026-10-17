@@ -52,3 +52,6 @@ load/results/*
 !load/results/latest*.json
 *.tsbuildinfo
 next.config.compiled.js
+
+# terraform provider cache (keep .terraform.lock.hcl)
+infra/terraform/.terraform/

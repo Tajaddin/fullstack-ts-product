@@ -156,4 +156,4 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: docker build --target web -t coursemates/web:ci .
       - run: docker build --target worker -t coursemates/worker:ci .
-      - run: docker image ls coursemates/web:ci coursemates/worker:ci --format '{{.Repository}} {{.Size}}'
+      - run: docker image ls --filter 'reference=coursemates/*:ci' --format '{{.Repository}} {{.Size}}'

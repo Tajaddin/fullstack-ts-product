@@ -26,6 +26,18 @@ afterAll(async () => {
   await Promise.all(stops.map((s) => s()));
 });
 
+// What the processors use of a BullMQ job: its data, and progress that BullMQ keeps between attempts.
+function fakeJob<T>(data: T): Job<T> {
+  const job = {
+    data,
+    progress: 0 as Job["progress"],
+    updateProgress: async (p: Job["progress"]) => {
+      job.progress = p;
+    },
+  };
+  return job as unknown as Job<T>;
+}
+
 async function mailpitMessages(): Promise<{ To: { Address: string }[]; Subject: string }[]> {
   const res = await fetch(`${mailpitApi}/api/v1/messages`);
   const body = (await res.json()) as { messages: { To: { Address: string }[]; Subject: string }[] };
@@ -68,27 +80,29 @@ describe("reminders end to end", () => {
     expect((await q.getDelayedCount()) + (await q.getWaitingCount())).toBe(1);
 
     // Run the processor directly, as the worker would when the delay elapses.
-    const outcome = await processReminder({ data: { meetupId: meetup.id, startsAt: startsAt.toISOString() } } as Job<{
-      meetupId: string;
-      startsAt: string;
-    }>);
+    const reminder = fakeJob({ meetupId: meetup.id, startsAt: startsAt.toISOString() });
+    const outcome = await processReminder(reminder);
     expect(outcome).toBe("sent");
     const messages = await mailpitMessages();
     const to = messages.map((m) => m.To[0].Address).sort();
     expect(to).toEqual(["w-member@example.edu", "w-owner@example.edu"]);
     expect(messages[0].Subject).toContain("Worker group");
 
+    // Another attempt of the same job (a retry) does not mail anyone twice.
+    expect(await processReminder(reminder)).toBe("sent");
+    expect((await mailpitMessages()).length).toBe(2);
+
     // A stale job (the meetup moved) is skipped.
     await updateMeetup(db(), meetup.id, { startsAt: new Date(startsAt.getTime() + 3600_000) }, owner);
-    const stale = await processReminder({ data: { meetupId: meetup.id, startsAt: startsAt.toISOString() } } as Job<{
-      meetupId: string;
-      startsAt: string;
-    }>);
+    const stale = await processReminder(fakeJob({ meetupId: meetup.id, startsAt: startsAt.toISOString() }));
     expect(stale).toBe("skipped");
 
     // The digest goes to members with something coming up (the decliner is still a member).
-    const sent = await processDigest({ data: { weekOf: "2026-10-19" } } as Job<{ weekOf: string }>);
+    const digest = fakeJob({ weekOf: "2026-10-19" });
+    const sent = await processDigest(digest);
     expect(sent).toBe(3);
+    expect((await mailpitMessages()).length).toBe(5);
+    expect(await processDigest(digest)).toBe(0);
     expect((await mailpitMessages()).length).toBe(5);
 
     // The digest scheduler is registered once.

@@ -172,7 +172,7 @@ with `FLY_API_TOKEN`. Everything fits the providers' free tiers. Steps and secre
 
 - Not deployed yet, so there are no real users and no weekly-active-users number; the measurement is in place.
 - Single-region, single-instance numbers; the Lighthouse and k6 results are from one machine over localhost.
-- Reminders are one job per meetup, not per recipient: a failure half-way retries the whole job and can re-send to people who already got the mail.
+- Reminders and the digest are one job each, not one per recipient. A retry mails only the people the job has not reached yet (kept in the job's progress), but a worker crash between SMTP accepting a mail and that record being written sends that one mail again.
 - The CSP allows inline scripts because the prerendered shell cannot carry a nonce; XSS protection rests on React's escaping and the other directives.
 - Traces are opt-in because a registered tracer provider makes Next.js render the page shells dynamically (ADR 0005).
 - The course list is a starter; it is not synced with the university catalogue.

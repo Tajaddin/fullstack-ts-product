@@ -6,7 +6,7 @@ import { Worker, type Job } from "bullmq";
 import { db } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { metrics } from "@/lib/metrics";
-import { sendMail } from "@/lib/email";
+import { sendMail, type Mail } from "@/lib/email";
 import { digestEmail, reminderEmail, type MeetupLine } from "@/lib/emails";
 import {
   closeQueues,
@@ -22,6 +22,46 @@ import { getMeetup, listMeetupsForUser, reminderRecipients, usersWithMemberships
 
 const appUrl = (process.env.APP_URL ?? "http://localhost:3100").replace(/\/$/, "");
 const connection = queueConnection();
+
+export interface Outgoing {
+  userId: string;
+  mail: Mail;
+}
+
+function reachedSoFar(progress: unknown): string[] {
+  const sentTo = typeof progress === "object" && progress !== null ? (progress as { sentTo?: unknown }).sentTo : undefined;
+  return Array.isArray(sentTo) ? sentTo : [];
+}
+
+/**
+ * Sends each message once across the job's attempts. The users already reached are kept in the job's
+ * progress, so a retry after a failure part-way sends only to the rest, and one failing address does not
+ * stop the ones after it. Throws if anything failed, which makes BullMQ retry just those.
+ */
+export async function sendOnce(
+  job: Pick<Job, "progress" | "updateProgress">,
+  outgoing: Outgoing[],
+  send: (mail: Mail) => Promise<unknown> = sendMail,
+): Promise<number> {
+  const reached = new Set(reachedSoFar(job.progress));
+  let sent = 0;
+  let failed = 0;
+  for (const { userId, mail } of outgoing) {
+    if (reached.has(userId)) continue;
+    try {
+      await send(mail);
+    } catch (err) {
+      failed++;
+      logger.warn({ err, kind: mail.kind, userId }, "e-mail failed");
+      continue;
+    }
+    reached.add(userId);
+    sent++;
+    await job.updateProgress({ sentTo: [...reached] });
+  }
+  if (failed > 0) throw new Error(`${failed} of ${outgoing.length} e-mails failed`);
+  return sent;
+}
 
 export async function processReminder(job: Job<ReminderJob>): Promise<"sent" | "skipped"> {
   const meetup = await getMeetup(db(), job.data.meetupId);
@@ -39,19 +79,19 @@ export async function processReminder(job: Job<ReminderJob>): Promise<"sent" | "
     url: `${appUrl}/groups/${group.id}`,
   };
   const recipients = await reminderRecipients(db(), meetup.id);
-  for (const r of recipients) {
-    const mail = reminderEmail(r.name, line);
-    await sendMail({ to: r.email, kind: "reminder", ...mail });
-  }
-  logger.info({ meetupId: meetup.id, recipients: recipients.length }, "reminder sent");
+  const sent = await sendOnce(
+    job,
+    recipients.map((r) => ({ userId: r.userId, mail: { to: r.email, kind: "reminder", ...reminderEmail(r.name, line) } })),
+  );
+  logger.info({ meetupId: meetup.id, recipients: recipients.length, sent }, "reminder sent");
   return "sent";
 }
 
-export async function processDigest(_job: Job<DigestJob>, now: Date = new Date()): Promise<number> {
+export async function processDigest(job: Job<DigestJob>, now: Date = new Date()): Promise<number> {
   const to = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const weekLabel = `${now.toISOString().slice(0, 10)} to ${to.toISOString().slice(0, 10)}`;
   const people = await usersWithMemberships(db());
-  let sent = 0;
+  const outgoing: Outgoing[] = [];
   for (const p of people) {
     const upcoming = await listMeetupsForUser(db(), p.userId, now, to);
     if (upcoming.length === 0) continue;
@@ -63,9 +103,9 @@ export async function processDigest(_job: Job<DigestJob>, now: Date = new Date()
       location: m.location,
       url: `${appUrl}/groups/${m.groupId}`,
     }));
-    await sendMail({ to: p.email, kind: "digest", ...digestEmail(p.name, lines, weekLabel) });
-    sent++;
+    outgoing.push({ userId: p.userId, mail: { to: p.email, kind: "digest", ...digestEmail(p.name, lines, weekLabel) } });
   }
+  const sent = await sendOnce(job, outgoing);
   logger.info({ sent, people: people.length }, "weekly digest sent");
   return sent;
 }

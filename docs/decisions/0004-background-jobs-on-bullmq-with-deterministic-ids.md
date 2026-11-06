@@ -29,5 +29,7 @@ sent for a meetup that moved or was cancelled.
   is skipped.
 - On Fly.io the worker is a second app from the same Dockerfile, and its release command applies the
   database migrations before the web app deploys.
-- Reminders are per meetup, not per recipient: a failure mid-way retries the whole job and can re-send to
-  recipients who already got it. Per-recipient child jobs would remove that and are the next step.
+- Reminders are per meetup, not per recipient. The users a job has reached are kept in its progress, so a
+  retry after a failure mid-way mails only the rest, and one failing address does not stop the ones after
+  it. Delivery is still at least once: a worker crash between SMTP accepting a mail and the progress write
+  sends that mail again on the retry.

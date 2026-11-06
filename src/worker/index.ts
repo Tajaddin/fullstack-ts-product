@@ -9,14 +9,7 @@ import { logger } from "@/lib/logger";
 import { metrics } from "@/lib/metrics";
 import { sendMail, type Mail } from "@/lib/email";
 import { digestEmail, reminderEmail, type MeetupLine } from "@/lib/emails";
-import {
-  DIGEST_QUEUE,
-  ensureDigestSchedule,
-  queueConnection,
-  REMINDERS_QUEUE,
-  type DigestJob,
-  type ReminderJob,
-} from "@/lib/queue";
+import { DIGEST_QUEUE, ensureDigestSchedule, queueConnection, REMINDERS_QUEUE, type DigestJob, type ReminderJob } from "@/lib/queue";
 import { redisOptions } from "@/lib/redis";
 import { getGroup } from "@/server/groups";
 import { getMeetup, listMeetupsForUser, reminderRecipients, usersWithMemberships } from "@/server/meetups";

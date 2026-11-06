@@ -18,7 +18,7 @@ places that re-implement the same rule; rate limits must hold across several web
 - Capacity is enforced inside a transaction with `SELECT ... FOR UPDATE` on the group row; the integration
   test joins three users concurrently into one free seat and expects exactly one success.
 - Rate limiting is a fixed window in Redis, implemented as one Lua script (`INCR`, `PEXPIRE` on first hit,
-  `PTTL`): per IP on `/api/*` (120/min by default) and per user on mutations (30/min), returning 429 with
+  `PTTL`): per IP on `/api/v1/*` (120/min by default) and per user on mutations (30/min), returning 429 with
   `Retry-After`. The same limiter guards server actions through `guardMutation()`.
 
 ## Consequences

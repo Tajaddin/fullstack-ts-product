@@ -29,7 +29,7 @@ The whole thing in containers: `docker compose --profile app up -d --build` (web
 | `npm run test:unit`                                         | Vitest: authorisation rules, validation, reminders, e-mails, calendar, environment               |
 | `npm run test:integration`                                  | Vitest with Testcontainers: Postgres (migrations from zero), Redis, Mailpit                      |
 | `npm run e2e`                                               | Playwright + axe against `npm run start` on :3100 (set `E2E_BASE_URL` to use a running server)   |
-| `npm run lhci`                                              | Lighthouse CI, mobile, three runs per page, scores >= 0.9 asserted                               |
+| `npm run lhci`                                              | Lighthouse CI, mobile, three runs per page; performance >= 0.7, everything else >= 0.9 asserted  |
 | `make load`                                                 | k6 in a container: p95 of the public pages at 10 VUs for 60 s, writes `load/results/latest.json` |
 | `make alerts-test`                                          | promtool unit tests for the alert rules                                                          |
 | `make tf-validate`                                          | Terraform fmt and validate in a container                                                        |

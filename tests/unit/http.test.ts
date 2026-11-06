@@ -19,6 +19,17 @@ describe("clientIp", () => {
     expect(clientIp(rotated)).toBe(clientIp(spoofed));
   });
 
+  it("counts an IPv6 client by its /64, and IPv4 by address", () => {
+    const from = (ip: string) => clientIp(withHeaders({ "fly-client-ip": ip }));
+    expect(from("2001:db8:1234:5678:9abc:def0:1:2")).toBe("2001:db8:1234:5678::/64");
+    expect(from("2001:db8:1234:5678::7")).toBe(from("2001:db8:1234:5678:ffff::1"));
+    expect(from("2001:DB8:0:0::1")).toBe("2001:db8:0:0::/64");
+    expect(from("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(from("2001:db8:1234:5679::7")).not.toBe(from("2001:db8:1234:5678::7"));
+    expect(from("::ffff:203.0.113.5")).toBe("203.0.113.5");
+    expect(from("203.0.113.5")).not.toBe(from("203.0.113.6"));
+  });
+
   it("puts requests without Fly in front into one bucket whatever they claim", () => {
     expect(clientIp(withHeaders({ "x-forwarded-for": "198.51.100.1" }))).toBe("local");
     expect(clientIp(withHeaders({ "x-real-ip": "198.51.100.2" }))).toBe("local");

@@ -58,8 +58,8 @@ export default function PrivacyPage() {
       <h2>Retention and deletion</h2>
       <p>
         Data stays as long as your account exists. “Delete my account” on your page removes your account, memberships, RSVPs and reports
-        immediately; groups you own pass to their longest-standing member, or are deleted if you were alone. Server logs are kept for 30
-        days and contain request ids, not names.
+        immediately; groups you own pass to their longest-standing member, or are deleted if you were alone, and meetups you scheduled stay
+        with their group. Server logs are kept for 30 days and contain request ids, not names.
       </p>
 
       <h2>Where it runs</h2>

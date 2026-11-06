@@ -129,9 +129,8 @@ export const meetups = pgTable(
     endsAt: timestamp("ends_at", tz).notNull(),
     location: text("location").notNull(),
     notes: text("notes").notNull().default(""),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    // A meetup belongs to its group: it outlives the account that scheduled it.
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     cancelled: boolean("cancelled").notNull().default(false),
     createdAt: timestamp("created_at", tz).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", tz).notNull().defaultNow(),

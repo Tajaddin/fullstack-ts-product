@@ -105,8 +105,9 @@ export async function listAudit(d: Db, limit = 50) {
 }
 
 /**
- * Deletes the caller's account. Groups they own pass to the longest-standing other member; a group with no
- * other members is deleted. Everything else (memberships, RSVPs, reports, activity) cascades.
+ * Deletes the caller's account. Groups they own pass to the longest-standing other member, meetups included;
+ * a group with no other members is deleted. Meetups they scheduled stay with their group, no longer linked to
+ * them. Everything else (memberships, RSVPs, reports, activity) cascades.
  */
 export async function deleteOwnAccount(d: Db, user: CurrentUser): Promise<void> {
   await d.transaction(async (tx) => {

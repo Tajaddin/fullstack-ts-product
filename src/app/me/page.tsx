@@ -81,7 +81,7 @@ export default async function MePage() {
         </h2>
         <p className="mt-1 text-sm text-muted">
           Deleting your account removes your memberships, RSVPs and reports. Groups you own pass to their longest-standing member, or are
-          deleted if you were the only one. See the{" "}
+          deleted if you were the only one; meetups you scheduled stay with their group. See the{" "}
           <Link className="underline" href="/privacy">
             privacy policy
           </Link>

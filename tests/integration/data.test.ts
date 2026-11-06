@@ -17,6 +17,7 @@ import {
 } from "@/server/groups";
 import {
   createMeetup,
+  getMeetup,
   listMeetupsForGroup,
   listMeetupsForUser,
   reminderRecipients,
@@ -238,7 +239,7 @@ describe("reports, roles, activity and account deletion", () => {
     expect(await weeklyActiveUsers(db, new Date(Date.now() + 30 * 24 * 3600_000))).toBe(0);
   });
 
-  it("deleting an account hands groups to the next member or removes them", async () => {
+  it("deleting an account hands groups and their meetups to the next member or removes them", async () => {
     const owner = await user("d-owner@example.edu");
     const heir = await user("d-heir@example.edu");
     const shared = await createGroup(
@@ -248,10 +249,18 @@ describe("reports, roles, activity and account deletion", () => {
     );
     const solo = await createGroup(db, { courseCode: "COP4530", name: "Solo", description: "", capacity: 5, visibility: "public" }, owner);
     await joinGroup(db, shared.id, heir);
+    const meetup = { startsAt: inAnHour(), durationMinutes: 60, location: "LIB 207", notes: "" };
+    const kept = await createMeetup(db, { ...meetup, groupId: shared.id }, owner, hooks());
+    const dropped = await createMeetup(db, { ...meetup, groupId: solo.id }, owner, hooks());
+    await setRsvp(db, kept.id, heir, "going");
     await deleteOwnAccount(db, owner);
     expect(await findUserById(db, owner.id)).toBeNull();
     expect((await getGroup(db, shared.id))?.ownerId).toBe(heir.id);
     expect((await getMembership(db, shared.id, heir.id))?.role).toBe("owner");
     expect(await getGroup(db, solo.id)).toBeNull();
+    // The meetup the owner scheduled stays with the group, with the heir's RSVP; only the owner's own RSVP goes.
+    expect(await getMeetup(db, kept.id)).toMatchObject({ groupId: shared.id, createdBy: null });
+    expect(await listMeetupsForGroup(db, shared.id, heir.id)).toMatchObject([{ id: kept.id, going: 1, myStatus: "going" }]);
+    expect(await getMeetup(db, dropped.id)).toBeNull();
   });
 });

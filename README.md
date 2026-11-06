@@ -45,7 +45,7 @@ The five decision records in `docs/decisions/` explain the choices and their con
 - **Join or start a group** with a size and a visibility; owners schedule meetups, members RSVP (going, maybe, can't), everyone gets an `.ics` feed.
 - **Reminders** an hour before each meetup to everyone who has not declined, and a **weekly digest** on Mondays.
 - **Report** a group; moderators resolve reports on `/admin`, admins also manage roles. Every moderation action is in an audit log.
-- **Delete your account** on your page; groups you own pass to their longest-standing member.
+- **Delete your account** on your page; groups you own pass to their longest-standing member, and meetups you scheduled stay with their group.
 - `/privacy` says what is stored, who sees it, and how long it is kept.
 
 ## Results

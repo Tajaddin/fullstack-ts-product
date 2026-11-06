@@ -2,7 +2,7 @@
 process.env.SERVICE_NAME ??= "worker";
 
 import http from "node:http";
-import { Worker, type Job } from "bullmq";
+import { Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { db } from "@/db/client";
 import { logger } from "@/lib/logger";
@@ -10,7 +10,6 @@ import { metrics } from "@/lib/metrics";
 import { sendMail, type Mail } from "@/lib/email";
 import { digestEmail, reminderEmail, type MeetupLine } from "@/lib/emails";
 import {
-  closeQueues,
   DIGEST_QUEUE,
   ensureDigestSchedule,
   queueConnection,
@@ -168,7 +167,11 @@ async function main() {
   for (const w of [reminders, digest]) {
     w.on("error", (err) => logger.error({ err, queue: w.name }, "worker error"));
   }
-  await ensureDigestSchedule();
+  // On a connection that waits for Redis like the workers' own, not the web app's fail-fast queues: a slow
+  // first connection must not stop the worker from starting.
+  const scheduler = new Queue<DigestJob>(DIGEST_QUEUE, { connection });
+  await ensureDigestSchedule(scheduler);
+  await scheduler.close();
 
   const port = Number(process.env.WORKER_METRICS_PORT ?? 9465);
   const server = http.createServer(async (req, res) => {
@@ -191,7 +194,6 @@ async function main() {
     server.close();
     await Promise.all([reminders.close(), digest.close()]);
     closeSentLog();
-    await closeQueues();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

@@ -32,10 +32,10 @@ afterAll(async () => {
   await stop();
 });
 
-const req = (method: string, path: string, body?: unknown, ip = "203.0.113.1") =>
+const req = (method: string, path: string, body?: unknown, ip = "203.0.113.1", forwardedFor = ip) =>
   new NextRequest(`http://localhost:3100${path}`, {
     method,
-    headers: { "x-forwarded-for": ip, "content-type": "application/json" },
+    headers: { "fly-client-ip": ip, "x-forwarded-for": forwardedFor, "content-type": "application/json" },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -99,6 +99,9 @@ describe("api()", () => {
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
     const limited = await handler(req("GET", "/t/limited", undefined, "198.51.100.7"), undefined);
     expect(limited.headers.get("Retry-After")).toMatch(/^\d+$/);
+    // A fresh X-Forwarded-For per request does not buy a fresh allowance.
+    const spoofed = await handler(req("GET", "/t/limited", undefined, "198.51.100.7", "192.0.2.77, 198.51.100.7"), undefined);
+    expect(spoofed.status).toBe(429);
 
     currentUser = { id: "mut-user", email: "m@example.edu", name: null, image: null, role: "member" };
     const mutation = api({ route: "/t/mutate", auth: "required", mutation: true }, async () => Response.json({ ok: true }));

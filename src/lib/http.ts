@@ -36,10 +36,13 @@ type RouteContext = { params: Promise<Record<string, string>> };
 
 let limiter: RateLimiter | undefined;
 
+/**
+ * The address per-IP rate limits count against. Fly's proxy sets Fly-Client-IP and overwrites any value a
+ * client sends; X-Forwarded-For is not used because its first entry is whatever the client wrote. Without
+ * Fly in front (local, Compose, CI) requests share one bucket.
+ */
 export function clientIp(request: NextRequest): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return request.headers.get("x-real-ip") ?? "local";
+  return request.headers.get("fly-client-ip")?.trim() || "local";
 }
 
 export function problem(status: number, message: string, extra: Record<string, unknown> = {}, headers?: HeadersInit): NextResponse {

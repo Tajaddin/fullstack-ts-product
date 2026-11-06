@@ -1,4 +1,5 @@
 import Redis, { type RedisOptions } from "ioredis";
+import { logger } from "./logger";
 
 declare global {
   var __coursematesRedis: Redis | undefined;
@@ -39,6 +40,7 @@ export function failFastRedisOptions(url: string = redisUrl()): RedisOptions {
 export function redis(): Redis {
   if (!globalThis.__coursematesRedis) {
     globalThis.__coursematesRedis = new Redis(failFastRedisOptions());
+    globalThis.__coursematesRedis.on("error", (err) => logger.warn({ err }, "redis error"));
   }
   return globalThis.__coursematesRedis;
 }

@@ -1,5 +1,5 @@
 import { Queue, type JobsOptions, type ConnectionOptions } from "bullmq";
-import { redisOptions } from "./redis";
+import { failFastRedisOptions, redisOptions } from "./redis";
 
 export const REMINDERS_QUEUE = "reminders";
 export const DIGEST_QUEUE = "digest";
@@ -23,15 +23,17 @@ const defaultJobOptions: JobsOptions = {
   removeOnFail: { count: 1000 },
 };
 
-/** BullMQ opens its own ioredis connections from these options (blocking commands need their own). */
+/** The workers' BullMQ connections (blocking commands need their own, and must wait out a Redis outage). */
 export function queueConnection(): ConnectionOptions {
   return redisOptions() as ConnectionOptions;
 }
 
+// Queues only add and inspect jobs, mostly from inside a web request, so they fail fast like the rate limiter.
 function createQueues() {
+  const connection = failFastRedisOptions() as ConnectionOptions;
   return {
-    reminders: new Queue<ReminderJob>(REMINDERS_QUEUE, { connection: queueConnection(), defaultJobOptions }),
-    digest: new Queue<DigestJob>(DIGEST_QUEUE, { connection: queueConnection(), defaultJobOptions }),
+    reminders: new Queue<ReminderJob>(REMINDERS_QUEUE, { connection, defaultJobOptions }),
+    digest: new Queue<DigestJob>(DIGEST_QUEUE, { connection, defaultJobOptions }),
   };
 }
 

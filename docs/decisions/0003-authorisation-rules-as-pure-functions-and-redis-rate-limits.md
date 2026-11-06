@@ -26,4 +26,6 @@ places that re-implement the same rule; rate limits must hold across several web
 - Adding a rule means adding a function and a test; adding an endpoint means calling the function.
 - A fixed window allows up to 2x the limit across a boundary; acceptable here, and a sliding window is a
   drop-in change to the script if it ever matters.
-- The limiter needs Redis; without it the API fails closed (500), which is deliberate.
+- The limiter needs Redis; without it the API fails closed, which is deliberate. Its client gives up after
+  one failed reconnect or a 1 s command timeout, so an outage answers 503 at once rather than holding every
+  request until Redis returns.

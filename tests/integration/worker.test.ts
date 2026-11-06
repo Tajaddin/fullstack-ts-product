@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import type { Job } from "bullmq";
+import Redis from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMailpit, startPostgres, startRedis } from "./containers";
 
@@ -22,20 +23,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const { closeQueues } = await import("@/lib/queue");
+  const { closeSentLog } = await import("@/worker/index");
+  closeSentLog();
   await closeQueues();
   await Promise.all(stops.map((s) => s()));
 });
 
-// What the processors use of a BullMQ job: its data, and progress that BullMQ keeps between attempts.
+// What the processors use of a BullMQ job: its data, and the identity its sent log in Redis is keyed by.
+let jobs = 0;
 function fakeJob<T>(data: T): Job<T> {
-  const job = {
-    data,
-    progress: 0 as Job["progress"],
-    updateProgress: async (p: Job["progress"]) => {
-      job.progress = p;
-    },
-  };
-  return job as unknown as Job<T>;
+  return { data, queueName: "test", id: `job-${++jobs}`, timestamp: Date.now() } as unknown as Job<T>;
 }
 
 async function mailpitMessages(): Promise<{ To: { Address: string }[]; Subject: string }[]> {
@@ -91,6 +88,8 @@ describe("reminders end to end", () => {
     // Another attempt of the same job (a retry) does not mail anyone twice.
     expect(await processReminder(reminder)).toBe("sent");
     expect((await mailpitMessages()).length).toBe(2);
+    const { redisSentLog } = await import("@/worker/index");
+    expect((await redisSentLog(reminder).load()).sort()).toEqual([member.id, owner.id].sort());
 
     // A stale job (the meetup moved) is skipped.
     await updateMeetup(db(), meetup.id, { startsAt: new Date(startsAt.getTime() + 3600_000) }, owner);
@@ -104,6 +103,13 @@ describe("reminders end to end", () => {
     expect((await mailpitMessages()).length).toBe(5);
     expect(await processDigest(digest)).toBe(0);
     expect((await mailpitMessages()).length).toBe(5);
+
+    // One set per job that sent mail, and none of them outlives its expiry.
+    const raw = new Redis(redisUrl);
+    const logs = await raw.keys("mail-sent:*");
+    expect(logs).toHaveLength(2);
+    for (const key of logs) expect(await raw.ttl(key)).toBeGreaterThan(0);
+    raw.disconnect();
 
     // The digest scheduler is registered once.
     const { ensureDigestSchedule } = await import("@/lib/queue");

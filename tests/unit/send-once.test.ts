@@ -1,17 +1,17 @@
-import type { Job } from "bullmq";
 import { describe, expect, it } from "vitest";
 import type { Mail } from "@/lib/email";
-import { sendOnce, type Outgoing } from "@/worker/index";
+import { sendOnce, type Outgoing, type SentLog } from "@/worker/index";
 
-// The part of a BullMQ job sendOnce uses; BullMQ keeps progress in Redis between attempts.
-function job(): Pick<Job, "progress" | "updateProgress"> {
-  const j: Pick<Job, "progress" | "updateProgress"> = {
-    progress: 0,
-    updateProgress: async (p) => {
-      j.progress = p;
+// In memory, as the Redis set is: survives between attempts, and records every write it is given.
+function log(): SentLog & { writes: string[] } {
+  const writes: string[] = [];
+  return {
+    writes,
+    load: async () => [...new Set(writes)],
+    add: async (userId) => {
+      writes.push(userId);
     },
   };
-  return j;
 }
 
 const outgoing = (...who: string[]): Outgoing[] =>
@@ -25,18 +25,21 @@ describe("sendOnce", () => {
       if (mail.to === "b@example.edu" && bFails) throw new Error("451 try again later");
       delivered.push(mail.to);
     };
-    const j = job();
+    const sent = log();
     const mails = outgoing("a", "b", "c");
 
-    await expect(sendOnce(j, mails, send)).rejects.toThrow("1 of 3 e-mails failed");
+    await expect(sendOnce(sent, mails, send)).rejects.toThrow("1 of 3 e-mails failed");
     expect(delivered).toEqual(["a@example.edu", "c@example.edu"]);
 
     bFails = false;
-    expect(await sendOnce(j, mails, send)).toBe(1);
+    expect(await sendOnce(sent, mails, send)).toBe(1);
     expect(delivered).toEqual(["a@example.edu", "c@example.edu", "b@example.edu"]);
 
     // A further attempt has nobody left to mail.
-    expect(await sendOnce(j, mails, send)).toBe(0);
+    expect(await sendOnce(sent, mails, send)).toBe(0);
     expect(delivered).toHaveLength(3);
+
+    // One write of one id per e-mail sent, never the list so far.
+    expect(sent.writes).toEqual(["a", "c", "b"]);
   });
 });

@@ -3,6 +3,7 @@ process.env.SERVICE_NAME ??= "worker";
 
 import http from "node:http";
 import { Worker, type Job } from "bullmq";
+import Redis from "ioredis";
 import { db } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { metrics } from "@/lib/metrics";
@@ -17,6 +18,7 @@ import {
   type DigestJob,
   type ReminderJob,
 } from "@/lib/queue";
+import { redisOptions } from "@/lib/redis";
 import { getGroup } from "@/server/groups";
 import { getMeetup, listMeetupsForUser, reminderRecipients, usersWithMemberships } from "@/server/meetups";
 
@@ -28,22 +30,51 @@ export interface Outgoing {
   mail: Mail;
 }
 
-function reachedSoFar(progress: unknown): string[] {
-  const sentTo = typeof progress === "object" && progress !== null ? (progress as { sentTo?: unknown }).sentTo : undefined;
-  return Array.isArray(sentTo) ? sentTo : [];
+/** The users a job has mailed, kept between its attempts. */
+export interface SentLog {
+  load(): Promise<string[]>;
+  add(userId: string): Promise<void>;
+}
+
+// Outlives any retry, including one picked up after the worker was down for days.
+const SENT_LOG_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+let sentLogClient: Redis | undefined;
+
+/**
+ * A Redis set per job, written with one SADD per e-mail sent. Not the job's progress: BullMQ also appends
+ * every progress update to the queue's event stream, so rewriting a growing list after each e-mail left
+ * O(recipients²) bytes there. The key includes the job's creation time because a rescheduled reminder is a
+ * new job under the same id, and it must mail everyone again.
+ */
+export function redisSentLog(job: Pick<Job, "queueName" | "id" | "timestamp">): SentLog {
+  if (!sentLogClient) {
+    // Waits out a Redis outage like the workers' own connections do.
+    sentLogClient = new Redis(redisOptions());
+    sentLogClient.on("error", (err) => logger.warn({ err }, "redis error"));
+  }
+  const client = sentLogClient;
+  const key = `mail-sent:${job.queueName}:${job.id}:${job.timestamp}`;
+  return {
+    load: () => client.smembers(key),
+    add: async (userId) => {
+      await client.multi().sadd(key, userId).expire(key, SENT_LOG_TTL_SECONDS).exec();
+    },
+  };
+}
+
+export function closeSentLog(): void {
+  sentLogClient?.disconnect();
+  sentLogClient = undefined;
 }
 
 /**
- * Sends each message once across the job's attempts. The users already reached are kept in the job's
- * progress, so a retry after a failure part-way sends only to the rest, and one failing address does not
- * stop the ones after it. Throws if anything failed, which makes BullMQ retry just those.
+ * Sends each message once across the job's attempts. A retry after a failure part-way sends only to the
+ * users the log does not have yet, and one failing address does not stop the ones after it. Throws if
+ * anything failed, which makes BullMQ retry just those.
  */
-export async function sendOnce(
-  job: Pick<Job, "progress" | "updateProgress">,
-  outgoing: Outgoing[],
-  send: (mail: Mail) => Promise<unknown> = sendMail,
-): Promise<number> {
-  const reached = new Set(reachedSoFar(job.progress));
+export async function sendOnce(log: SentLog, outgoing: Outgoing[], send: (mail: Mail) => Promise<unknown> = sendMail): Promise<number> {
+  const reached = new Set(await log.load());
   let sent = 0;
   let failed = 0;
   for (const { userId, mail } of outgoing) {
@@ -57,7 +88,7 @@ export async function sendOnce(
     }
     reached.add(userId);
     sent++;
-    await job.updateProgress({ sentTo: [...reached] });
+    await log.add(userId);
   }
   if (failed > 0) throw new Error(`${failed} of ${outgoing.length} e-mails failed`);
   return sent;
@@ -80,7 +111,7 @@ export async function processReminder(job: Job<ReminderJob>): Promise<"sent" | "
   };
   const recipients = await reminderRecipients(db(), meetup.id);
   const sent = await sendOnce(
-    job,
+    redisSentLog(job),
     recipients.map((r) => ({ userId: r.userId, mail: { to: r.email, kind: "reminder", ...reminderEmail(r.name, line) } })),
   );
   logger.info({ meetupId: meetup.id, recipients: recipients.length, sent }, "reminder sent");
@@ -105,7 +136,7 @@ export async function processDigest(job: Job<DigestJob>, now: Date = new Date())
     }));
     outgoing.push({ userId: p.userId, mail: { to: p.email, kind: "digest", ...digestEmail(p.name, lines, weekLabel) } });
   }
-  const sent = await sendOnce(job, outgoing);
+  const sent = await sendOnce(redisSentLog(job), outgoing);
   logger.info({ sent, people: people.length }, "weekly digest sent");
   return sent;
 }
@@ -159,6 +190,7 @@ async function main() {
     logger.info({ signal }, "worker shutting down");
     server.close();
     await Promise.all([reminders.close(), digest.close()]);
+    closeSentLog();
     await closeQueues();
     process.exit(0);
   };

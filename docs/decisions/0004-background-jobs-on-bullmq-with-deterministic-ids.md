@@ -29,7 +29,9 @@ sent for a meetup that moved or was cancelled.
   is skipped.
 - On Fly.io the worker is a second app from the same Dockerfile, and its release command applies the
   database migrations before the web app deploys.
-- Reminders are per meetup, not per recipient. The users a job has reached are kept in its progress, so a
-  retry after a failure mid-way mails only the rest, and one failing address does not stop the ones after
-  it. Delivery is still at least once: a worker crash between SMTP accepting a mail and the progress write
+- Reminders are per meetup, not per recipient. The users a job has reached are kept in a Redis set per job
+  (one SADD per e-mail, expiring after a week), so a retry after a failure mid-way mails only the rest, and
+  one failing address does not stop the ones after it. Not in the job's progress: BullMQ appends every
+  progress update to the queue's event stream, so a growing list rewritten per e-mail costs O(recipients²)
+  bytes there. Delivery is still at least once: a worker crash between SMTP accepting a mail and that write
   sends that mail again on the retry.

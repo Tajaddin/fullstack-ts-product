@@ -22,6 +22,7 @@ describe("/api/metrics", () => {
     vi.stubEnv("METRICS_TOKEN", "scrape-token-for-tests");
     expect((await scrape()).status).toBe(401);
     expect((await scrape("Bearer wrong")).status).toBe(401);
+    expect((await scrape("Bearer scrape-token-for-testz")).status).toBe(401);
     const ok = await scrape("Bearer scrape-token-for-tests");
     expect(ok.status).toBe(200);
     expect(await ok.text()).toContain("# HELP");

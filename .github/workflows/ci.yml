@@ -100,7 +100,7 @@ jobs:
         with: { name: playwright-report, path: playwright-report, retention-days: 7 }
 
   lighthouse:
-    name: Lighthouse CI (mobile, scores >= 90)
+    name: Lighthouse CI (mobile, performance >= 70, others >= 90)
     runs-on: ubuntu-latest
     services:
       postgres:

@@ -61,6 +61,7 @@ services:
     environment:
       <<: *app-env
       PORT: "3000"
+      METRICS_TOKEN: ${METRICS_TOKEN:-local}
     ports: ["${WEB_PORT:-3100}:3000"]
     depends_on:
       postgres: { condition: service_healthy }

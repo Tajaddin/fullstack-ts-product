@@ -51,12 +51,14 @@ runs against the production build. Build first: `npm run build`.
 3. Deploy (flyctl installed and logged in):
    ```bash
    export DATABASE_URL=... REDIS_URL=... AUTH_SECRET=$(openssl rand -base64 32) SMTP_URL=... \
+          METRICS_TOKEN=$(openssl rand -hex 32) \
           AUTH_GOOGLE_ID=... AUTH_GOOGLE_SECRET=... SENTRY_DSN=... NEXT_PUBLIC_POSTHOG_KEY=...
    make deploy
    ```
    `scripts/deploy.sh` creates the two apps if needed, stages the secrets, deploys the worker (whose release
    command runs `scripts/migrate.ts`), then the web app. Change the app names in `fly.toml`,
-   `fly.worker.toml` and `WEB_APP`/`WORKER_APP` if `coursemates` is taken.
+   `fly.worker.toml` and `WEB_APP`/`WORKER_APP` if `coursemates` is taken. `/api/metrics` answers only to
+   `Authorization: Bearer <METRICS_TOKEN>`; a production build without the secret refuses every scrape.
 4. First admin: `fly ssh console -a coursemates-worker -C "node_modules/.bin/tsx src/db/seed.ts --admin you@example.edu"`.
 5. GitHub deploys: repository environment `production` with secret `FLY_API_TOKEN` and variables `APP_URL`,
    `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_CONTACT`; then Actions, deploy, Run workflow.

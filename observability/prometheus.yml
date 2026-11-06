@@ -15,6 +15,9 @@ scrape_configs:
   # as containers; both targets are listed and the one that is down simply shows up as down.
   - job_name: web
     metrics_path: /api/metrics
+    # Production builds require METRICS_TOKEN; this is the local value from .env.example and docker-compose.yml.
+    authorization:
+      credentials: local
     static_configs:
       - targets: ["host.docker.internal:3100"]
         labels: { instance: host }

@@ -150,7 +150,7 @@ Every endpoint validates with zod, is rate limited, and returns `{ error, code?,
 | `POST /api/v1/admin/reports/{id}`                    | moderator                                | resolve or dismiss                                |
 | `PATCH /api/v1/admin/users/{id}/role`                | admin                                    | change a role                                     |
 | `GET /api/v1/me`                                     | signed in                                | my groups and upcoming meetups                    |
-| `GET /api/health`, `GET /api/metrics`                | anyone, Prometheus                       | dependencies check, metrics                       |
+| `GET /api/health`, `GET /api/metrics`                | anyone; Prometheus with `METRICS_TOKEN`  | dependencies check, metrics                       |
 
 ## Security and privacy
 

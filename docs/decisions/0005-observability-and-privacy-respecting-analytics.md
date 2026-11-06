@@ -11,9 +11,9 @@ metrics, traces, a dashboard, alerts with tests).
 ## Decision
 
 - **Logs**: pino JSON on stdout with the service name and request ids; headers and secrets redacted.
-- **Metrics**: `prom-client` registries in both processes. `/api/metrics` on the web app (optionally
-  behind `METRICS_TOKEN`), `:9465/metrics` on the worker. Request durations are recorded per **route
-  pattern** by the `api()` wrapper, never per concrete path. Seven alert rules with promtool tests; a Grafana
+- **Metrics**: `prom-client` registries in both processes. `/api/metrics` on the web app (behind
+  `METRICS_TOKEN`, which a production build requires), `:9465/metrics` on the worker. Request durations are
+  recorded per **route pattern** by the `api()` wrapper, never per concrete path. Seven alert rules with promtool tests; a Grafana
   dashboard in Compose.
 - **Traces**: opt-in. `@vercel/otel` exports OTLP to Tempo when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; when
   `SENTRY_DSN` is set, Sentry owns tracing instead, because it brings its own OpenTelemetry setup and two

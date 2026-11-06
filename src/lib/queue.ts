@@ -78,9 +78,13 @@ export async function cancelReminder(meetupId: string, q: Queues["reminders"] = 
   if (replaceable.has(state)) await existing.remove();
 }
 
-/** Monday 13:00 UTC (09:00 Tampa in summer, 08:00 in winter). Idempotent: BullMQ upserts the scheduler. */
+/**
+ * Monday 13:00 UTC (09:00 Tampa in summer, 08:00 in winter). Idempotent: BullMQ upserts the scheduler.
+ * Each upsert replaces the options every run is created with: the calling queue's default job options plus
+ * the template's. They are in the template because the worker registers the schedule on a queue without any.
+ */
 export async function ensureDigestSchedule(q: Queues["digest"] = queues().digest): Promise<void> {
-  await q.upsertJobScheduler("weekly-digest", { pattern: "0 13 * * 1", tz: "UTC" }, { name: "weekly-digest" });
+  await q.upsertJobScheduler("weekly-digest", { pattern: "0 13 * * 1", tz: "UTC" }, { name: "weekly-digest", opts: defaultJobOptions });
 }
 
 export async function closeQueues(): Promise<void> {

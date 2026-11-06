@@ -16,7 +16,9 @@ in production builds. Make yourself admin with `npm run seed -- --admin you@exam
 
 Observability: `make up-obs` adds Prometheus (:9099), Alertmanager (:9101), Grafana (:3005, dashboard
 "Coursemates") and Tempo (:3203, OTLP on :4319). Prometheus scrapes the app on the host (`:3100/api/metrics`,
-`:9465/metrics`) and, when the `app` profile runs, the containers.
+`:9465/metrics`) and, when the `app` profile runs, the containers. It sends the bearer token `local`, so the app
+needs `METRICS_TOKEN=local` as in `.env.example`: with another token, or none under `npm run start` (an `.env`
+older than the setting), the web target gets 401 and the dashboard's web panels stay empty.
 
 The whole thing in containers: `docker compose --profile app up -d --build` (web on :3100, worker metrics on
 :9465).

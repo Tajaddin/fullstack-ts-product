@@ -201,6 +201,23 @@ describe("meetups and RSVPs", () => {
     expect(h.cancelled).toEqual([m.id]);
     await expect(setRsvp(db, m.id, member, "going")).rejects.toMatchObject({ status: 409 });
   });
+
+  it("leaves no meetup behind when its reminder cannot be scheduled, so a retry does not duplicate it", async () => {
+    const owner = await user("f-owner@example.edu");
+    const g = await createGroup(db, { courseCode: "COP4530", name: "Flaky", description: "", capacity: 5, visibility: "public" }, owner);
+    const input = { groupId: g.id, startsAt: inAnHour(), durationMinutes: 60, location: "LIB 207", notes: "" };
+    const down: JobHooks = {
+      schedule: async () => {
+        throw new Error("Command timed out");
+      },
+      cancel: async () => {},
+    };
+    await expect(createMeetup(db, input, owner, down)).rejects.toThrow("Command timed out");
+    expect(await listMeetupsForGroup(db, g.id, owner.id)).toEqual([]);
+
+    const retried = await createMeetup(db, input, owner, hooks());
+    expect((await listMeetupsForGroup(db, g.id, owner.id)).map((x) => x.id)).toEqual([retried.id]);
+  });
 });
 
 describe("reports, roles, activity and account deletion", () => {

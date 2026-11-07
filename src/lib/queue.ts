@@ -1,5 +1,5 @@
 import { Queue, type JobsOptions, type ConnectionOptions } from "bullmq";
-import { redisOptions } from "./redis";
+import { failFastRedisOptions, redisOptions } from "./redis";
 
 export const REMINDERS_QUEUE = "reminders";
 export const DIGEST_QUEUE = "digest";
@@ -23,15 +23,17 @@ const defaultJobOptions: JobsOptions = {
   removeOnFail: { count: 1000 },
 };
 
-/** BullMQ opens its own ioredis connections from these options (blocking commands need their own). */
+/** The workers' BullMQ connections (blocking commands need their own, and must wait out a Redis outage). */
 export function queueConnection(): ConnectionOptions {
   return redisOptions() as ConnectionOptions;
 }
 
+// Queues only add and inspect jobs, mostly from inside a web request, so they fail fast like the rate limiter.
 function createQueues() {
+  const connection = failFastRedisOptions() as ConnectionOptions;
   return {
-    reminders: new Queue<ReminderJob>(REMINDERS_QUEUE, { connection: queueConnection(), defaultJobOptions }),
-    digest: new Queue<DigestJob>(DIGEST_QUEUE, { connection: queueConnection(), defaultJobOptions }),
+    reminders: new Queue<ReminderJob>(REMINDERS_QUEUE, { connection, defaultJobOptions }),
+    digest: new Queue<DigestJob>(DIGEST_QUEUE, { connection, defaultJobOptions }),
   };
 }
 
@@ -76,9 +78,13 @@ export async function cancelReminder(meetupId: string, q: Queues["reminders"] = 
   if (replaceable.has(state)) await existing.remove();
 }
 
-/** Monday 13:00 UTC (09:00 Tampa in summer, 08:00 in winter). Idempotent: BullMQ upserts the scheduler. */
+/**
+ * Monday 13:00 UTC (09:00 Tampa in summer, 08:00 in winter). Idempotent: BullMQ upserts the scheduler.
+ * Each upsert replaces the options every run is created with: the calling queue's default job options plus
+ * the template's. They are in the template because the worker registers the schedule on a queue without any.
+ */
 export async function ensureDigestSchedule(q: Queues["digest"] = queues().digest): Promise<void> {
-  await q.upsertJobScheduler("weekly-digest", { pattern: "0 13 * * 1", tz: "UTC" }, { name: "weekly-digest" });
+  await q.upsertJobScheduler("weekly-digest", { pattern: "0 13 * * 1", tz: "UTC" }, { name: "weekly-digest", opts: defaultJobOptions });
 }
 
 export async function closeQueues(): Promise<void> {

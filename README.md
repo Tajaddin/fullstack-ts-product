@@ -31,7 +31,7 @@ flowchart LR
 | Auth          | Auth.js v5 with Google. JWT sessions carry only the user id; every request resolves it to a fresh `users` row, so a role change or a deleted account takes effect immediately. A password-less development login exists only outside production builds.         |
 | Authorisation | Site roles `member < moderator < admin`, group roles `owner`, `member`. Rules are pure functions in `src/lib/rbac.ts` with a test per rule; the data access layer enforces them and private groups answer 404, not 403.                                         |
 | Validation    | One zod schema per input, shared by the server actions and the REST handlers.                                                                                                                                                                                   |
-| Rate limiting | Redis fixed window in one Lua script: per IP on `/api/*`, per user on mutations (actions included), `429` with `Retry-After`.                                                                                                                                   |
+| Rate limiting | Redis fixed window in one Lua script: per IP on `/api/v1/*` (IPv6 by /64), per user on mutations (actions included), `429` with `Retry-After`.                                                                                                                  |
 | Jobs          | BullMQ: a delayed reminder per meetup (job id = meetup id, so rescheduling never duplicates; the worker re-checks the meetup and skips stale jobs) and a weekly digest on a job scheduler. Mail through nodemailer to any SMTP.                                 |
 | Observability | pino JSON logs, `prom-client` metrics on the web app and the worker, seven promtool-tested alert rules, a Grafana dashboard; OpenTelemetry traces and Sentry are opt-in.                                                                                        |
 | Analytics     | PostHog, cookieless: page views only, no autocapture, no session recording, no IP, Do-Not-Track honoured. Weekly active users are counted in our own database.                                                                                                  |
@@ -45,7 +45,7 @@ The five decision records in `docs/decisions/` explain the choices and their con
 - **Join or start a group** with a size and a visibility; owners schedule meetups, members RSVP (going, maybe, can't), everyone gets an `.ics` feed.
 - **Reminders** an hour before each meetup to everyone who has not declined, and a **weekly digest** on Mondays.
 - **Report** a group; moderators resolve reports on `/admin`, admins also manage roles. Every moderation action is in an audit log.
-- **Delete your account** on your page; groups you own pass to their longest-standing member.
+- **Delete your account** on your page; groups you own pass to their longest-standing member, and meetups you scheduled stay with their group.
 - `/privacy` says what is stored, who sees it, and how long it is kept.
 
 ## Results
@@ -104,13 +104,13 @@ fetching every public page and the groups API once.
 
 ### Tests
 
-| Suite                                                         | Count                      | What it covers                                                                                                                                                                                               |
-| ------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Vitest unit                                                   | 23                         | authorisation rules, validation and normalisation, reminder timing, e-mail templates, calendar feed, environment guard                                                                                       |
-| Vitest integration (Testcontainers: Postgres, Redis, Mailpit) | 18                         | migrations from zero, capacity under concurrent joins, private visibility, reminders through to the inbox, rate limiter, role changes, account deletion hand-over, the API wrapper (401/403/400/409/500/429) |
-| Playwright end to end                                         | 18                         | the full owner, member and moderator flow against the production build; axe checks (WCAG 2.1 AA, serious and critical) on 8 pages, desktop and mobile                                                        |
-| promtool                                                      | 8 scenarios, 10 assertions | each alert fires when it should and stays quiet when it should not                                                                                                                                           |
-| Lighthouse CI                                                 | 3 pages                    | performance, accessibility, best practices and SEO at or above 90                                                                                                                                            |
+| Suite                                                         | Count                      | What it covers                                                                                                                                                                                            |
+| ------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vitest unit                                                   | 34                         | authorisation rules, validation and normalisation, reminder timing, e-mail templates, calendar feed, environment guard, client IP, Redis outage: 503, logged, metrics token, one e-mail per recipient     |
+| Vitest integration (Testcontainers: Postgres, Redis, Mailpit) | 19                         | migrations from zero, concurrent joins, private visibility, reminders to the inbox once, rate limiter, role changes, account deletion hand-over, failed scheduling, API wrapper (401/403/400/409/500/429) |
+| Playwright end to end                                         | 18                         | the full owner, member and moderator flow against the production build; axe checks (WCAG 2.1 AA, serious and critical) on 8 pages, desktop and mobile                                                     |
+| promtool                                                      | 8 scenarios, 10 assertions | each alert fires when it should and stays quiet when it should not                                                                                                                                        |
+| Lighthouse CI                                                 | 3 pages                    | accessibility, best practices and SEO at or above 90; performance at or above 70                                                                                                                          |
 
 CI (`.github/workflows/ci.yml`) runs lint, format, types and unit tests; migrations from zero plus drift
 check; integration tests; the e2e and axe suite against a built app; Lighthouse CI; promtool; Terraform fmt
@@ -132,7 +132,8 @@ Sign in with the development login (any e-mail) and make yourself admin with
 
 ### API
 
-Every endpoint validates with zod, is rate limited, and returns `{ error, code?, fields? }` on failure.
+Every `/api/v1` endpoint validates with zod, is rate limited, and returns `{ error, code?, fields? }` on failure.
+`/api/health`, `/api/metrics` and the Auth.js routes under `/api/auth` are not rate limited.
 
 | Method and path                                      | Who                                      | Does                                              |
 | ---------------------------------------------------- | ---------------------------------------- | ------------------------------------------------- |
@@ -150,7 +151,7 @@ Every endpoint validates with zod, is rate limited, and returns `{ error, code?,
 | `POST /api/v1/admin/reports/{id}`                    | moderator                                | resolve or dismiss                                |
 | `PATCH /api/v1/admin/users/{id}/role`                | admin                                    | change a role                                     |
 | `GET /api/v1/me`                                     | signed in                                | my groups and upcoming meetups                    |
-| `GET /api/health`, `GET /api/metrics`                | anyone, Prometheus                       | dependencies check, metrics                       |
+| `GET /api/health`, `GET /api/metrics`                | anyone; Prometheus with `METRICS_TOKEN`  | dependencies check, metrics                       |
 
 ## Security and privacy
 
@@ -172,7 +173,7 @@ with `FLY_API_TOKEN`. Everything fits the providers' free tiers. Steps and secre
 
 - Not deployed yet, so there are no real users and no weekly-active-users number; the measurement is in place.
 - Single-region, single-instance numbers; the Lighthouse and k6 results are from one machine over localhost.
-- Reminders are one job per meetup, not per recipient: a failure half-way retries the whole job and can re-send to people who already got the mail.
+- Reminders and the digest are one job each, not one per recipient. A retry mails only the people the job has not reached yet (a Redis set per job, one entry per e-mail, kept for a week), but a worker crash between SMTP accepting a mail and that record being written sends that one mail again.
 - The CSP allows inline scripts because the prerendered shell cannot carry a nonce; XSS protection rests on React's escaping and the other directives.
 - Traces are opt-in because a registered tracer provider makes Next.js render the page shells dynamically (ADR 0005).
 - The course list is a starter; it is not synced with the university catalogue.

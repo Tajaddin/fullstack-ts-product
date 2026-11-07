@@ -4,7 +4,7 @@ import { ZodError, type ZodType } from "zod";
 import { env } from "./env";
 import { logger } from "./logger";
 import { observeRequest, metrics } from "./metrics";
-import { RateLimiter, retryAfterSeconds } from "./ratelimit";
+import { RateLimiter, retryAfterSeconds, type RateLimitResult } from "./ratelimit";
 import { HttpError, hasRole, forbidden, unauthorized, type SiteRole } from "./rbac";
 import { redis } from "./redis";
 import { fieldErrors } from "./validation";
@@ -36,10 +36,38 @@ type RouteContext = { params: Promise<Record<string, string>> };
 
 let limiter: RateLimiter | undefined;
 
+/**
+ * The address per-IP rate limits count against. Fly's proxy sets Fly-Client-IP and overwrites any value a
+ * client sends; X-Forwarded-For is not used because its first entry is whatever the client wrote. Without
+ * Fly in front (local, Compose, CI) requests share one bucket. An IPv6 client counts by its /64, the block
+ * one subscriber is routed, so cycling through its addresses does not buy a fresh allowance.
+ */
 export function clientIp(request: NextRequest): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return request.headers.get("x-real-ip") ?? "local";
+  const ip = request.headers.get("fly-client-ip")?.trim();
+  if (!ip) return "local";
+  return ip.includes(":") ? ipv6Slash64(ip) : ip;
+}
+
+function ipv6Slash64(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const [head, tail] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array<string>(8 - left.length - right.length).fill("0"), ...right];
+  const prefix = groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16));
+  return `${prefix.join(":")}::/64`;
+}
+
+/** The limiter needs Redis; without it the API fails closed, with a 503 the caller can retry. */
+async function rateLimit(log: typeof logger, scope: string, subject: string, limit: number): Promise<RateLimitResult> {
+  limiter ??= new RateLimiter(redis());
+  try {
+    return await limiter.hit(scope, subject, limit, 60_000);
+  } catch (err) {
+    log.error({ err, scope }, "rate limiter unavailable");
+    throw new HttpError(503, "temporarily unavailable, try again shortly", "unavailable");
+  }
 }
 
 export function problem(status: number, message: string, extra: Record<string, unknown> = {}, headers?: HeadersInit): NextResponse {
@@ -58,9 +86,7 @@ export function api<TBody = undefined, TQuery = undefined>(opts: ApiOptions<TBod
     let status = 500;
     try {
       const cfg = env();
-      limiter ??= new RateLimiter(redis());
-      const ip = clientIp(request);
-      const perIp = await limiter.hit("api", ip, cfg.RATE_LIMIT_API_PER_MINUTE, 60_000);
+      const perIp = await rateLimit(log, "api", clientIp(request), cfg.RATE_LIMIT_API_PER_MINUTE);
       if (!perIp.allowed) {
         metrics.rateLimited.labels("api").inc();
         status = 429;
@@ -79,7 +105,7 @@ export function api<TBody = undefined, TQuery = undefined>(opts: ApiOptions<TBod
         if (opts.role && !hasRole(user, opts.role)) throw forbidden();
       }
       if (opts.mutation && user) {
-        const perUser = await limiter.hit("mutation", user.id, cfg.RATE_LIMIT_MUTATIONS_PER_MINUTE, 60_000);
+        const perUser = await rateLimit(log, "mutation", user.id, cfg.RATE_LIMIT_MUTATIONS_PER_MINUTE);
         if (!perUser.allowed) {
           metrics.rateLimited.labels("mutation").inc();
           status = 429;

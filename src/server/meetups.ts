@@ -41,7 +41,14 @@ export async function createMeetup(d: Db, data: CreateMeetupData, actor: Princip
     .values({ groupId: data.groupId, startsAt: data.startsAt, endsAt, location: data.location, notes: data.notes, createdBy: actor.id })
     .returning();
   await d.insert(rsvps).values({ meetupId: m.id, userId: actor.id, status: "going" }).onConflictDoNothing();
-  await hooks.schedule(m.id, m.startsAt);
+  try {
+    await hooks.schedule(m.id, m.startsAt);
+  } catch (err) {
+    // The caller sees an error, so leave nothing behind: a retry would otherwise create a second meetup.
+    // Not done in a transaction because a reminder due now could run before the insert committed.
+    await d.delete(meetups).where(eq(meetups.id, m.id));
+    throw err;
+  }
   return m;
 }
 

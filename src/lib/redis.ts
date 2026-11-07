@@ -1,4 +1,5 @@
 import Redis, { type RedisOptions } from "ioredis";
+import { logger } from "./logger";
 
 declare global {
   var __coursematesRedis: Redis | undefined;
@@ -8,7 +9,10 @@ export function redisUrl(): string {
   return process.env.REDIS_URL ?? "redis://localhost:6380";
 }
 
-/** ioredis options parsed from REDIS_URL (rediss:// turns TLS on). */
+/**
+ * ioredis options parsed from REDIS_URL (rediss:// turns TLS on), for the BullMQ workers: their blocking
+ * connections must keep a command queued until Redis comes back, so they never give up on one.
+ */
 export function redisOptions(url: string = redisUrl()): RedisOptions {
   const u = new URL(url);
   return {
@@ -18,17 +22,25 @@ export function redisOptions(url: string = redisUrl()): RedisOptions {
     password: u.password || undefined,
     db: u.pathname && u.pathname !== "/" ? Number(u.pathname.slice(1)) : 0,
     tls: u.protocol === "rediss:" ? {} : undefined,
-    // BullMQ requires these on the connections it blocks on; harmless for everything else.
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: true,
   };
 }
 
-/** Shared client for rate limits and small lookups; BullMQ gets its own connections from redisOptions(). */
+/**
+ * For Redis calls made while a request waits (rate limits, the health check, queueing a reminder): when
+ * Redis is down or stops answering, a command fails within a second instead of waiting for it to return.
+ */
+export function failFastRedisOptions(url: string = redisUrl()): RedisOptions {
+  return { ...redisOptions(url), maxRetriesPerRequest: 1, commandTimeout: 1_000 };
+}
+
+/** Shared client for rate limits and the health check; BullMQ opens its own connections. */
 export function redis(): Redis {
   if (!globalThis.__coursematesRedis) {
-    globalThis.__coursematesRedis = new Redis(redisOptions());
+    globalThis.__coursematesRedis = new Redis(failFastRedisOptions());
+    globalThis.__coursematesRedis.on("error", (err) => logger.warn({ err }, "redis error"));
   }
   return globalThis.__coursematesRedis;
 }

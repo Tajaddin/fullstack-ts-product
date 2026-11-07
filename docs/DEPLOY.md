@@ -16,7 +16,9 @@ in production builds. Make yourself admin with `npm run seed -- --admin you@exam
 
 Observability: `make up-obs` adds Prometheus (:9099), Alertmanager (:9101), Grafana (:3005, dashboard
 "Coursemates") and Tempo (:3203, OTLP on :4319). Prometheus scrapes the app on the host (`:3100/api/metrics`,
-`:9465/metrics`) and, when the `app` profile runs, the containers.
+`:9465/metrics`) and, when the `app` profile runs, the containers. It sends the bearer token `local`, so the app
+needs `METRICS_TOKEN=local` as in `.env.example`: with another token, or none under `npm run start` (an `.env`
+older than the setting), the web target gets 401 and the dashboard's web panels stay empty.
 
 The whole thing in containers: `docker compose --profile app up -d --build` (web on :3100, worker metrics on
 :9465).
@@ -29,7 +31,7 @@ The whole thing in containers: `docker compose --profile app up -d --build` (web
 | `npm run test:unit`                                         | Vitest: authorisation rules, validation, reminders, e-mails, calendar, environment               |
 | `npm run test:integration`                                  | Vitest with Testcontainers: Postgres (migrations from zero), Redis, Mailpit                      |
 | `npm run e2e`                                               | Playwright + axe against `npm run start` on :3100 (set `E2E_BASE_URL` to use a running server)   |
-| `npm run lhci`                                              | Lighthouse CI, mobile, three runs per page, scores >= 0.9 asserted                               |
+| `npm run lhci`                                              | Lighthouse CI, mobile, three runs per page; performance >= 0.7, everything else >= 0.9 asserted  |
 | `make load`                                                 | k6 in a container: p95 of the public pages at 10 VUs for 60 s, writes `load/results/latest.json` |
 | `make alerts-test`                                          | promtool unit tests for the alert rules                                                          |
 | `make tf-validate`                                          | Terraform fmt and validate in a container                                                        |
@@ -51,12 +53,14 @@ runs against the production build. Build first: `npm run build`.
 3. Deploy (flyctl installed and logged in):
    ```bash
    export DATABASE_URL=... REDIS_URL=... AUTH_SECRET=$(openssl rand -base64 32) SMTP_URL=... \
+          METRICS_TOKEN=$(openssl rand -hex 32) \
           AUTH_GOOGLE_ID=... AUTH_GOOGLE_SECRET=... SENTRY_DSN=... NEXT_PUBLIC_POSTHOG_KEY=...
    make deploy
    ```
    `scripts/deploy.sh` creates the two apps if needed, stages the secrets, deploys the worker (whose release
    command runs `scripts/migrate.ts`), then the web app. Change the app names in `fly.toml`,
-   `fly.worker.toml` and `WEB_APP`/`WORKER_APP` if `coursemates` is taken.
+   `fly.worker.toml` and `WEB_APP`/`WORKER_APP` if `coursemates` is taken. `/api/metrics` answers only to
+   `Authorization: Bearer <METRICS_TOKEN>`; a production build without the secret refuses every scrape.
 4. First admin: `fly ssh console -a coursemates-worker -C "node_modules/.bin/tsx src/db/seed.ts --admin you@example.edu"`.
 5. GitHub deploys: repository environment `production` with secret `FLY_API_TOKEN` and variables `APP_URL`,
    `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_CONTACT`; then Actions, deploy, Run workflow.
